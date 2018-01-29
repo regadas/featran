@@ -19,6 +19,8 @@ import com.typesafe.sbt.SbtSite.SiteKeys._
 import com.typesafe.sbt.SbtGit.GitKeys.gitRemoteRepo
 
 val algebirdVersion = "0.13.3"
+val avroVersion = "1.8.2"
+val bigqueryVersion = "v2-rev367-1.22.0"
 val breezeVersion = "0.13.1"
 val circeVersion = "0.8.0"
 val commonsMathVersion = "3.6.1"
@@ -88,6 +90,8 @@ lazy val root: Project = Project(
   scalding,
   scio,
   spark,
+  avro,
+  bigQuery,
   numpy,
   tensorflow
 )
@@ -200,6 +204,32 @@ lazy val spark: Project = Project(
   core,
   core % "test->test"
 )
+
+lazy val avro: Project = Project(
+  "avro",
+  file("avro")
+).settings(
+  commonSettings,
+  moduleName := "featran-avro",
+  description := "Feature Transformers - Avro",
+  libraryDependencies ++= Seq(
+    "org.apache.avro" % "avro" % avroVersion % "provided",
+    "org.scalacheck" %% "scalacheck" % scalacheckVersion % "test"
+  )
+).dependsOn(core)
+
+lazy val bigQuery: Project = Project(
+  "bigquery",
+  file("bigquery")
+).settings(
+  commonSettings,
+  moduleName := "featran-bigquery",
+  description := "Feature Transformers - BigQuery",
+  libraryDependencies ++= Seq(
+    "com.google.apis" % "google-api-services-bigquery" % bigqueryVersion % "provided",
+    "org.scalacheck" %% "scalacheck" % scalacheckVersion % "test"
+  )
+).dependsOn(core)
 
 lazy val numpy: Project = Project(
   "numpy",
