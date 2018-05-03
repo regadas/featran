@@ -113,6 +113,38 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
     new FeatureExtractor[M, T](new FeatureSet[T](features, crossings), input, None)
 
   /**
+   * Extract features from an input collection using only transformers named in includeFeatures.
+   *
+   * @param input input collection
+   * @param includeFeatures names of transformers to use
+   * @tparam M input collection type, e.g. `Array`, `List`
+   */
+  def extractInclude[M[_]: CollectionType](input: M[T],
+                                           includeFeatures: Set[String]):
+  FeatureExtractor[M, T] = {
+    val filteredFeatures = features.filter { f =>
+      includeFeatures.contains(f.transformer.name)
+    }
+    new FeatureExtractor[M, T](new FeatureSet[T](filteredFeatures, crossings), input, None)
+  }
+
+  /**
+   * Extract features from an input collection using only transformers not named in excludeFeatures.
+   *
+   * @param input input collection
+   * @param excludeFeatures names of transformers to ignore
+   * @tparam M input collection type, e.g. `Array`, `List`
+   */
+  def extractExclude[M[_]: CollectionType](input: M[T],
+                                           excludeFeatures: Set[String]):
+  FeatureExtractor[M, T] = {
+    val filteredFeatures = features.filter { f =>
+      !excludeFeatures.contains(f.transformer.name)
+    }
+    new FeatureExtractor[M, T](new FeatureSet[T](filteredFeatures, crossings), input, None)
+  }
+
+  /**
    * Extract features from an input collection using settings from a previous session.
    *
    * This bypasses the `reduce` step in [[extract]] and uses feature summary from settings exported
@@ -133,10 +165,26 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
    * This bypasses the `reduce` step in [[extract]] and uses feature summary from settings exported
    * in a previous session.
    * @param settings JSON settings from a previous session
+   * @param useIncludeList When set to true, only uses features included in settings. Defaults to
+   *                       false.
    */
-  def extractWithSettings[F: FeatureBuilder: ClassTag](settings: String): RecordExtractor[T, F] =
-    new RecordExtractor[T, F](new FeatureSet[T](features, crossings), settings)
+  def extractWithSettings[F: FeatureBuilder: ClassTag](settings: String,
+                                                       useIncludeList: Boolean = false)
+  : RecordExtractor[T, F] = {
+    val filteredFeatures = if(useIncludeList) {
+      import io.circe.generic.auto._
+      import io.circe.parser._
 
+      val s = decode[Seq[Settings]](settings).right.get
+
+      features.filter { f =>
+        s.exists(x => x.name == f.transformer.name)
+      }
+    } else {
+      features
+    }
+    new RecordExtractor[T, F](new FeatureSet[T](filteredFeatures, crossings), settings)
+  }
 }
 
 private class Feature[T, A, B, C](val f: T => Option[A],

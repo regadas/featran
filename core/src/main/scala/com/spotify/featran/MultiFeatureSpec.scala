@@ -47,13 +47,36 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
    *
    * This is done in two steps, a `reduce` step over the collection to aggregate feature summary,
    * and a `map` step to transform values using the summary.
+   *
    * @param input input collection
    * @tparam M input collection type, e.g. `Array`, `List`
    */
-  def extract[M[_]: CollectionType](input: M[T]): MultiFeatureExtractor[M, T] =
+  def extract[M[_] : CollectionType](input: M[T]): MultiFeatureExtractor[M, T] =
     new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](features, crossings, mapping),
-                                    input,
-                                    None)
+      input,
+      None)
+
+  def extractInclude[M[_] : CollectionType](input: M[T],
+                                            includeFeatures: Set[String]):
+  MultiFeatureExtractor[M, T] = {
+    val filteredFeatures = features.toList.filter { f =>
+      includeFeatures.contains(f.transformer.name)
+    }.toArray
+    new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](filteredFeatures, crossings, mapping),
+      input,
+      None)
+  }
+
+  def extractExclude[M[_] : CollectionType](input: M[T],
+                                            excludeFeatures: Set[String]):
+  MultiFeatureExtractor[M, T] = {
+    val filteredFeatures = features.toList.filter { f =>
+      !excludeFeatures.contains(f.transformer.name)
+    }.toArray
+    new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](filteredFeatures, crossings, mapping),
+      input,
+      None)
+  }
 
   /**
    * Extract features from a input collection using settings from a previous session.

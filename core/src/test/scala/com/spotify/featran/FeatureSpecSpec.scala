@@ -39,6 +39,7 @@ object FeatureSpecSpec extends Properties("FeatureSpec") {
 
   private val id = Identity("id")
   private val id2 = Identity("id2")
+  private val id3 = Identity("id3")
 
   property("required") = Prop.forAll { xs: List[Record] =>
     val f = FeatureSpec.of[Record].required(_.d)(id).extract(xs)
@@ -140,6 +141,34 @@ object FeatureSpecSpec extends Properties("FeatureSpec") {
     Prop.all(e1.featureNames.head == e2.featureNames,
              e1.featureValues[Seq[Double]] == xs.map(e2.featureValue),
              e1.featureResults[Seq[Double]] == xs.map(e2.featureResult))
+  }
+
+  property("record extractor only use names in settings") = Prop.forAll { xs: List[Record] =>
+    val f1 = FeatureSpec.of[Record].required(_.d)(id).required(_.d)(id2).required(_.d)(id3)
+    val includeList = Set(id.name, id3.name)
+    val e1 = f1.extractInclude(xs, includeList)
+    val settings = e1.featureSettings.head
+    val e2 = f1.extractWithSettings[Seq[Double]](settings, useIncludeList = true)
+
+    Prop.all(e1.featureNames.head == e2.featureNames,
+      e1.featureValues[Seq[Double]] == xs.map(e2.featureValue),
+      e1.featureResults[Seq[Double]] == xs.map(e2.featureResult))
+  }
+
+  property("extract specified list of include features") = Prop.forAll { xs: List[Record] =>
+    val f = FeatureSpec.of[Record].required(_.d)(id).required(_.d)(id2)
+    val includeFeatures = Set(id.name)
+    val extracted = f.extractInclude(xs, includeFeatures)
+    Prop.all(extracted.featureNames.head == Seq("id"),
+    extracted.featureResults[Seq[Double]] == xs.map(r => FeatureResult(Seq(r.d), Map.empty, r)))
+  }
+
+  property("extract with features excluded") = Prop.forAll { xs: List[Record] =>
+    val f = FeatureSpec.of[Record].required(_.d)(id).required(_.d)(id2)
+    val includeFeatures = Set(id.name)
+    val extracted = f.extractExclude(xs, includeFeatures)
+    Prop.all(extracted.featureNames.head == Seq("id2"),
+      extracted.featureResults[Seq[Double]] == xs.map(r => FeatureResult(Seq(r.d), Map.empty, r)))
   }
 
   property("names") = Prop.forAll(Gen.alphaStr) { s =>
