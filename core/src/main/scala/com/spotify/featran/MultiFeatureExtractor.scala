@@ -27,7 +27,7 @@ import scala.language.{higherKinds, implicitConversions}
  * @tparam T input record type to extract features from
  */
 class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
-  private val fs: MultiFeatureSet[T],
+  private val fs: M[MultiFeatureSet[T]],
   @transient private val input: M[T],
   @transient private val settings: Option[M[String]])
     extends Serializable {

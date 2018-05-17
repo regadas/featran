@@ -154,8 +154,11 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
    * @tparam M input collection type, e.g. `Array`, `List`
    */
   def extractWithSettings[M[_]: CollectionType](input: M[T],
-                                                settings: M[String]): FeatureExtractor[M, T] =
-    new FeatureExtractor[M, T](new FeatureSet[T](features, crossings), input, Some(settings))
+                                                settings: M[String]): FeatureExtractor[M, T] = {
+
+    val asd: M[FeatureSet] = settings.map(_ => new FeatureSet[](filtered, crossings))
+    new FeatureExtractor[M, T](asd, input, Some(settings))
+  }
 
   /**
    * Extract features from individual records using settings from a previous session. Since the

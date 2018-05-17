@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
  * @tparam T input record type to extract features from
  */
 class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
-  private val fs: FeatureSet[T],
+  private val fs: M[FeatureSet[T]],
   @transient private val input: M[T],
   @transient private val settings: Option[M[String]])
     extends Serializable {
@@ -40,18 +40,23 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
 
   @transient private[featran] lazy val as: M[(T, ARRAY)] = {
     val g = fs // defeat closure
-    input.map(o => (o, g.unsafeGet(o)))
+    g.flatMap(h => input.map(o => (o, h.unsafeGet(o))))
   }
   @transient private[featran] lazy val aggregate: M[ARRAY] = settings match {
     case Some(x) =>
-      x.map { s =>
+      x.flatMap { s =>
         import io.circe.generic.auto._
         import io.circe.parser._
-        fs.decodeAggregators(decode[Seq[Settings]](s).right.get)
+        fs.map(_.decodeAggregators(decode[Seq[Settings]](s).right.get))
       }
     case None =>
-      as.map(t => fs.unsafePrepare(t._2)).reduce(fs.unsafeSum).map(fs.unsafePresent)
+      fs.flatMap { x =>
+        as.map(t => x.unsafePrepare(t._2))
+                .reduce(x.unsafeSum)
+                .map(x.unsafePresent)
+      }
   }
+
 
   /**
    * JSON settings of the [[FeatureSpec]] and aggregated feature summary.
@@ -62,10 +67,10 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
   @transient lazy val featureSettings: M[String] = settings match {
     case Some(x) => x
     case None =>
-      aggregate.map { a =>
+      fs.flatMap { x => aggregate.map {a =>
         import io.circe.generic.auto._
         import io.circe.syntax._
-        fs.featureSettings(a).asJson.noSpaces
+        x.featureSettings(a).asJson.noSpaces}
       }
   }
 
@@ -73,7 +78,7 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
    * Names of the extracted features, in the same order as values in [[featureValues]].
    */
   @transient lazy val featureNames: M[Seq[String]] =
-    aggregate.map(fs.featureNames)
+    fs.flatMap(x => aggregate.map(x.featureNames))
 
   /**
    * Values of the extracted features, in the same order as names in [[featureNames]].
@@ -90,14 +95,15 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
    *           `DenseVector[Double]`
    */
   def featureResults[F: FeatureBuilder: ClassTag]: M[FeatureResult[F, T]] = {
-    val fb = CrossingFeatureBuilder(implicitly[FeatureBuilder[F]].newBuilder, fs.crossings)
-    as.cross(aggregate).map {
-      case ((o, a), c) =>
-        fs.featureValues(a, c, fb)
-        FeatureResult(fb.result, fb.rejections, o)
+    fs.flatMap { x =>
+      val fb = CrossingFeatureBuilder(implicitly[FeatureBuilder[F]].newBuilder, x.crossings)
+      as.cross(aggregate).map {
+        case ((o, a), c) =>
+          x.featureValues(a, c, fb)
+          FeatureResult(fb.result, fb.rejections, o)
+      }
     }
   }
-
 }
 
 case class FeatureResult[F, T](value: F, rejections: Map[String, FeatureRejection], original: T)
@@ -109,6 +115,8 @@ class RecordExtractor[T, F: FeatureBuilder: ClassTag] private[featran] (fs: Feat
   private implicit val iteratorCollectionType: CollectionType[Iterator] =
     new CollectionType[Iterator] {
       override def map[A, B: ClassTag](ma: Iterator[A], f: A => B): Iterator[B] = ma.map(f)
+      override def flatMap[A, B: ClassTag](ma: Iterator[A], f: A => Iterator[B]) = ma.flatMap(f)
+      override def pure[A](a: A): Iterator[A] = ???
       override def reduce[A](ma: Iterator[A], f: (A, A) => A): Iterator[A] = ???
       override def cross[A, B: ClassTag](ma: Iterator[A], mb: Iterator[B]): Iterator[(A, B)] = {
         val b = mb.next()
