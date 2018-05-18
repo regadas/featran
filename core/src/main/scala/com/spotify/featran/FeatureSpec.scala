@@ -109,39 +109,25 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
    * @param input input collection
    * @tparam M input collection type, e.g. `Array`, `List`
    */
-  def extract[M[_]: CollectionType](input: M[T]): FeatureExtractor[M, T] =
-    new FeatureExtractor[M, T](new FeatureSet[T](features, crossings), input, None)
-
-  /**
-   * Extract features from an input collection using only transformers named in includeFeatures.
-   *
-   * @param input input collection
-   * @param includeFeatures names of transformers to use
-   * @tparam M input collection type, e.g. `Array`, `List`
-   */
-  def extractInclude[M[_]: CollectionType](input: M[T],
-                                           includeFeatures: Set[String]):
-  FeatureExtractor[M, T] = {
-    val filteredFeatures = features.filter { f =>
-      includeFeatures.contains(f.transformer.name)
-    }
-    new FeatureExtractor[M, T](new FeatureSet[T](filteredFeatures, crossings), input, None)
+  def extract[M[_]: CollectionType](input: M[T]): FeatureExtractor[M, T] = {
+    val fs = implicitly[CollectionType[M]].pure(new FeatureSet[T](features, crossings))
+    new FeatureExtractor[M, T](fs, input, None)
   }
 
   /**
-   * Extract features from an input collection using only transformers not named in excludeFeatures.
+   * Extract features from an input collection based on the provided predicate
    *
    * @param input input collection
-   * @param excludeFeatures names of transformers to ignore
+   * @param predicate Function determining whether or not to include the feature
    * @tparam M input collection type, e.g. `Array`, `List`
    */
-  def extractExclude[M[_]: CollectionType](input: M[T],
-                                           excludeFeatures: Set[String]):
-  FeatureExtractor[M, T] = {
-    val filteredFeatures = features.filter { f =>
-      !excludeFeatures.contains(f.transformer.name)
-    }
-    new FeatureExtractor[M, T](new FeatureSet[T](filteredFeatures, crossings), input, None)
+  def extract[M[_]: CollectionType](
+    input: M[T],
+    predicate: Feature[T, _, _, _] => Boolean): FeatureExtractor[M, T] = {
+    val filteredFeatures = features.filter(predicate)
+    val fs = implicitly[CollectionType[M]].pure(new FeatureSet[T](filteredFeatures, crossings))
+
+    new FeatureExtractor[M, T](fs, input, None)
   }
 
   /**
@@ -156,8 +142,21 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
   def extractWithSettings[M[_]: CollectionType](input: M[T],
                                                 settings: M[String]): FeatureExtractor[M, T] = {
 
-    val asd: M[FeatureSet] = settings.map(_ => new FeatureSet[](filtered, crossings))
-    new FeatureExtractor[M, T](asd, input, Some(settings))
+//    val filteredFeatures: M[FeatureSet] = settings.map(_ => new FeatureSet[](filtered, crossings))
+    val dt: CollectionType[M] = implicitly[CollectionType[M]]
+    import dt.Ops._
+
+    val featureSet = settings.map { s =>
+      import io.circe.generic.auto._
+      import io.circe.parser._
+      val settingsJson = decode[Seq[Settings]](s).right.get
+      val filteredFeatures = features.filter { f =>
+        settingsJson.exists(x => x.name == f.transformer.name)
+      }
+      new FeatureSet(filteredFeatures, crossings)
+    }
+
+    new FeatureExtractor[M, T](featureSet, input, Some(settings))
   }
 
   /**
@@ -171,10 +170,10 @@ class FeatureSpec[T] private[featran] (private[featran] val features: Array[Feat
    * @param useIncludeList When set to true, only uses features included in settings. Defaults to
    *                       false.
    */
-  def extractWithSettings[F: FeatureBuilder: ClassTag](settings: String,
-                                                       useIncludeList: Boolean = false)
-  : RecordExtractor[T, F] = {
-    val filteredFeatures = if(useIncludeList) {
+  def extractWithSettings[F: FeatureBuilder: ClassTag](
+    settings: String,
+    useIncludeList: Boolean = false): RecordExtractor[T, F] = {
+    val filteredFeatures = if (useIncludeList) {
       import io.circe.generic.auto._
       import io.circe.parser._
 

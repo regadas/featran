@@ -17,6 +17,8 @@
 
 package com.spotify.featran
 
+import com.spotify.featran.transformers.Settings
+
 import scala.language.{higherKinds, implicitConversions}
 
 /**
@@ -51,31 +53,27 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
    * @param input input collection
    * @tparam M input collection type, e.g. `Array`, `List`
    */
-  def extract[M[_] : CollectionType](input: M[T]): MultiFeatureExtractor[M, T] =
-    new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](features, crossings, mapping),
-      input,
-      None)
-
-  def extractInclude[M[_] : CollectionType](input: M[T],
-                                            includeFeatures: Set[String]):
-  MultiFeatureExtractor[M, T] = {
-    val filteredFeatures = features.toList.filter { f =>
-      includeFeatures.contains(f.transformer.name)
-    }.toArray
-    new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](filteredFeatures, crossings, mapping),
-      input,
-      None)
+  def extract[M[_]: CollectionType](input: M[T]): MultiFeatureExtractor[M, T] = {
+    val fs =
+      implicitly[CollectionType[M]].pure(new MultiFeatureSet[T](features, crossings, mapping))
+    new MultiFeatureExtractor[M, T](fs, input, None)
   }
 
-  def extractExclude[M[_] : CollectionType](input: M[T],
-                                            excludeFeatures: Set[String]):
-  MultiFeatureExtractor[M, T] = {
-    val filteredFeatures = features.toList.filter { f =>
-      !excludeFeatures.contains(f.transformer.name)
-    }.toArray
-    new MultiFeatureExtractor[M, T](new MultiFeatureSet[T](filteredFeatures, crossings, mapping),
-      input,
-      None)
+  /**
+   * Extract features from an input collection based on the provided predicate
+   *
+   * @param input input collection
+   * @param predicate Function determining whether or not to include the feature
+   * @tparam M input collection type, e.g. `Array`, `List`
+   */
+  def extract[M[_]: CollectionType](
+    input: M[T],
+    predicate: Feature[T, _, _, _] => Boolean): MultiFeatureExtractor[M, T] = {
+    val filteredFeatures = features.filter(predicate)
+    val fs = implicitly[CollectionType[M]]
+      .pure(new MultiFeatureSet[T](filteredFeatures, crossings, mapping))
+
+    new MultiFeatureExtractor[M, T](fs, input, None)
   }
 
   /**
@@ -87,10 +85,22 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
    * @param settings JSON settings from a previous session
    * @tparam M input collection type, e.g. `Array`, `List`
    */
-  def extractWithSettings[M[_]: CollectionType](input: M[T],
-                                                settings: M[String]): MultiFeatureExtractor[M, T] =
-    new MultiFeatureExtractor[M, T](new MultiFeatureSet(features, crossings, mapping),
-                                    input,
-                                    Some(settings))
+  def extractWithSettings[M[_]: CollectionType](
+    input: M[T],
+    settings: M[String]): MultiFeatureExtractor[M, T] = {
+    val dt: CollectionType[M] = implicitly[CollectionType[M]]
+    import dt.Ops._
+
+    val featureSet = settings.map { s =>
+      import io.circe.generic.auto._
+      import io.circe.parser._
+      val settingsJson = decode[Seq[Settings]](s).right.get
+      val filteredFeatures = features.filter { f =>
+        settingsJson.exists(x => x.name == f.transformer.name)
+      }
+      new MultiFeatureSet(filteredFeatures, crossings, mapping)
+    }
+    new MultiFeatureExtractor[M, T](featureSet, input, Some(settings))
+  }
 
 }

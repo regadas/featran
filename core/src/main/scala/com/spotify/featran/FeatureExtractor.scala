@@ -27,7 +27,7 @@ import scala.reflect.ClassTag
  * @tparam M input collection type, e.g. `Array`, List
  * @tparam T input record type to extract features from
  */
-class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
+class FeatureExtractor[M[+ _]: CollectionType, T] private[featran] (
   private val fs: M[FeatureSet[T]],
   @transient private val input: M[T],
   @transient private val settings: Option[M[String]])
@@ -52,11 +52,10 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
     case None =>
       fs.flatMap { x =>
         as.map(t => x.unsafePrepare(t._2))
-                .reduce(x.unsafeSum)
-                .map(x.unsafePresent)
+          .reduce(x.unsafeSum)
+          .map(x.unsafePresent)
       }
   }
-
 
   /**
    * JSON settings of the [[FeatureSpec]] and aggregated feature summary.
@@ -67,10 +66,12 @@ class FeatureExtractor[M[_]: CollectionType, T] private[featran] (
   @transient lazy val featureSettings: M[String] = settings match {
     case Some(x) => x
     case None =>
-      fs.flatMap { x => aggregate.map {a =>
-        import io.circe.generic.auto._
-        import io.circe.syntax._
-        x.featureSettings(a).asJson.noSpaces}
+      fs.flatMap { x =>
+        aggregate.map { a =>
+          import io.circe.generic.auto._
+          import io.circe.syntax._
+          x.featureSettings(a).asJson.noSpaces
+        }
       }
   }
 
@@ -116,7 +117,7 @@ class RecordExtractor[T, F: FeatureBuilder: ClassTag] private[featran] (fs: Feat
     new CollectionType[Iterator] {
       override def map[A, B: ClassTag](ma: Iterator[A], f: A => B): Iterator[B] = ma.map(f)
       override def flatMap[A, B: ClassTag](ma: Iterator[A], f: A => Iterator[B]) = ma.flatMap(f)
-      override def pure[A](a: A): Iterator[A] = ???
+      override def pure[A](a: A): Iterator[A] = new Iterator[A]()
       override def reduce[A](ma: Iterator[A], f: (A, A) => A): Iterator[A] = ???
       override def cross[A, B: ClassTag](ma: Iterator[A], mb: Iterator[B]): Iterator[(A, B)] = {
         val b = mb.next()

@@ -49,7 +49,7 @@ class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
    * Names of the extracted features, in the same order as values in [[featureValues]].
    */
   @transient lazy val featureNames: M[Seq[Seq[String]]] =
-    extractor.aggregate.map(fs.multiFeatureNames)
+    extractor.aggregate.flatMap(a => fs.map(_.multiFeatureNames(a)))
 
   /**
    * Values of the extracted features, in the same order as names in [[featureNames]].
@@ -67,11 +67,13 @@ class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
    */
   def featureResults[F: FeatureBuilder: ClassTag]
     : M[(Seq[F], Seq[Map[String, FeatureRejection]], T)] = {
-    val fbs = fs.multiFeatureBuilders
-    extractor.as.cross(extractor.aggregate).map {
+    val fbs = fs.map(_.multiFeatureBuilders)
+    extractor.as.cross(extractor.aggregate).flatMap {
       case ((o, a), c) =>
-        fs.multiFeatureValues(a, c, fbs)
-        (fbs.map(_.result).toSeq, fbs.map(_.rejections), o)
+        fbs.map { x =>
+          fs.map(_.multiFeatureValues(a, c, x))
+          (x.map(_.result).toSeq, x.map(_.rejections), o)
+        }
     }
   }
 
