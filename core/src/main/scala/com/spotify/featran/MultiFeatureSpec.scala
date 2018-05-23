@@ -54,8 +54,10 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
    * @tparam M input collection type, e.g. `Array`, `List`
    */
   def extract[M[_]: CollectionType](input: M[T]): MultiFeatureExtractor[M, T] = {
-    val fs =
-      implicitly[CollectionType[M]].pure(new MultiFeatureSet[T](features, crossings, mapping))
+    val ct: CollectionType[M] = implicitly[CollectionType[M]]
+    import ct.Ops._
+
+    val fs = input.pure(new MultiFeatureSet[T](features, crossings, mapping))
     new MultiFeatureExtractor[M, T](fs, input, None)
   }
 
@@ -69,9 +71,11 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
   def extract[M[_]: CollectionType](
     input: M[T],
     predicate: Feature[T, _, _, _] => Boolean): MultiFeatureExtractor[M, T] = {
+    val ct: CollectionType[M] = implicitly[CollectionType[M]]
+    import ct.Ops._
+
     val filteredFeatures = features.filter(predicate)
-    val fs = implicitly[CollectionType[M]]
-      .pure(new MultiFeatureSet[T](filteredFeatures, crossings, mapping))
+    val fs = input.pure(new MultiFeatureSet[T](filteredFeatures, crossings, mapping))
 
     new MultiFeatureExtractor[M, T](fs, input, None)
   }
@@ -91,15 +95,37 @@ class MultiFeatureSpec[T](private[featran] val mapping: Map[String, Int],
     val dt: CollectionType[M] = implicitly[CollectionType[M]]
     import dt.Ops._
 
+    val fs = input.pure(new MultiFeatureSet(features, crossings, mapping))
+    new MultiFeatureExtractor[M, T](fs, input, Some(settings))
+  }
+
+  /**
+   * Extract features from a input collection using partial settings from a previous session.
+   *
+   * This bypasses the `reduce` step in [[extract]] and uses feature summary from settings exported
+   * in a previous session.
+   * @param input input collection
+   * @param settings JSON settings from a previous session
+   * @tparam M input collection type, e.g. `Array`, `List`
+   */
+  def extractWithPartialSettings[M[_]: CollectionType](
+    input: M[T],
+    settings: M[String]): MultiFeatureExtractor[M, T] = {
+    val dt: CollectionType[M] = implicitly[CollectionType[M]]
+    import dt.Ops._
+
     val featureSet = settings.map { s =>
       import io.circe.generic.auto._
       import io.circe.parser._
+
       val settingsJson = decode[Seq[Settings]](s).right.get
       val filteredFeatures = features.filter { f =>
         settingsJson.exists(x => x.name == f.transformer.name)
       }
-      new MultiFeatureSet(filteredFeatures, crossings, mapping)
+
+      new MultiFeatureSet[T](filteredFeatures, crossings, mapping)
     }
+
     new MultiFeatureExtractor[M, T](featureSet, input, Some(settings))
   }
 

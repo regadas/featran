@@ -27,17 +27,21 @@ import scala.reflect.ClassTag
  * @tparam M collection type
  */
 trait CollectionType[M[_]] { self =>
-  def pure[A: ClassTag](a: A): M[A]
-  def flatMap[A, B: ClassTag](ma: M[A], f: A => M[B]): M[B]
+  def pure[A: ClassTag](ma: M[_], a: A): M[A]
+
   def map[A, B: ClassTag](ma: M[A], f: A => B): M[B]
+
   def reduce[A](ma: M[A], f: (A, A) => A): M[A]
+
   def cross[A, B: ClassTag](ma: M[A], mb: M[B]): M[(A, B)]
 
   class MOps[A](ma: M[A]) {
+    def pure[B: ClassTag](b: B): M[B] = self.pure(ma, b)
+
     def map[B: ClassTag](f: A => B): M[B] = self.map(ma, f)
-    def pure[A: ClassTag](a: A): M[A] = self.pure(a)
-    def flatMap[B: ClassTag](f: A => M[B]): M[B] = self.flatMap(ma, f)
+
     def reduce(f: (A, A) => A): M[A] = self.reduce(ma, f)
+
     def cross[B: ClassTag](mb: M[B]): M[(A, B)] = self.cross(ma, mb)
   }
 
@@ -50,26 +54,24 @@ object CollectionType {
   implicit def scalaCollectionType[M[_] <: Traversable[_]](
     implicit cbf: CanBuildFrom[M[_], _, M[_]]): CollectionType[M] =
     new CollectionType[M] {
-      override def map[A, B: ClassTag](ma: M[A], f: (A) => B): M[B] = {
+      override def map[A, B: ClassTag](ma: M[A], f: A => B): M[B] = {
         val builder = cbf().asInstanceOf[mutable.Builder[B, M[B]]]
         ma.asInstanceOf[Seq[A]].foreach(a => builder += f(a))
         builder.result()
       }
-      override def flatMap[A, B: ClassTag](ma: M[A], f: (A) => M[B]): M[B] = {
-        val builder = cbf().asInstanceOf[mutable.Builder[B, M[B]]]
-        ma.asInstanceOf[Seq[A]].flatMap(f).foreach(a => builder += a)
-        builder.result()
-      }
-      override def pure[A: ClassTag](a: A): M[A] = {
+
+      override def pure[A: ClassTag](ma: M[_], a: A): M[A] = {
         val builder = cbf().asInstanceOf[mutable.Builder[A, M[A]]]
         builder += a
         builder.result()
       }
+
       override def reduce[A](ma: M[A], f: (A, A) => A): M[A] = {
         val builder = cbf().asInstanceOf[mutable.Builder[A, M[A]]]
         builder += ma.asInstanceOf[Seq[A]].reduce(f)
         builder.result()
       }
+
       override def cross[A, B: ClassTag](ma: M[A], mb: M[B]): M[(A, B)] = {
         val builder = cbf().asInstanceOf[mutable.Builder[(A, B), M[(A, B)]]]
         val b = mb.asInstanceOf[Seq[B]].head
@@ -78,12 +80,12 @@ object CollectionType {
       }
     }
 
-  implicit val arrayCollectionType = new CollectionType[Array] {
-    override def map[A, B: ClassTag](ma: Array[A], f: (A) => B): Array[B] =
+  implicit val arrayCollectionType: CollectionType[Array] = new CollectionType[Array] {
+    override def map[A, B: ClassTag](ma: Array[A], f: A => B): Array[B] =
       ma.map(f)
-    override def flatMap[A, B: ClassTag](ma: Array[A], f: (A) => Array[B]): Array[B] =
-      ma.map(f).flatten
-    override def pure[A: ClassTag](a: A): Array[A] = Array(a)
+
+    override def pure[A: ClassTag](ma: Array[_], a: A): Array[A] = Array(a)
+
     override def reduce[A](ma: Array[A], f: (A, A) => A): Array[A] = {
       // workaround for "No ClassTag available for A"
       val r = ma.take(1)

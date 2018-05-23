@@ -35,7 +35,7 @@ class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
   @transient private val dt: CollectionType[M] = implicitly[CollectionType[M]]
   import dt.Ops._
 
-  private val extractor = new FeatureExtractor(fs, input, settings)
+  private val extractor = new FeatureExtractor(fs.asInstanceOf[M[FeatureSet[T]]], input, settings)
 
   /**
    * JSON settings of the [[MultiFeatureSpec]] and aggregated feature summary.
@@ -49,7 +49,7 @@ class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
    * Names of the extracted features, in the same order as values in [[featureValues]].
    */
   @transient lazy val featureNames: M[Seq[Seq[String]]] =
-    extractor.aggregate.flatMap(a => fs.map(_.multiFeatureNames(a)))
+    extractor.aggregate.cross(fs).map(x => x._2.multiFeatureNames(x._1))
 
   /**
    * Values of the extracted features, in the same order as names in [[featureNames]].
@@ -67,14 +67,15 @@ class MultiFeatureExtractor[M[_]: CollectionType, T] private[featran] (
    */
   def featureResults[F: FeatureBuilder: ClassTag]
     : M[(Seq[F], Seq[Map[String, FeatureRejection]], T)] = {
-    val fbs = fs.map(_.multiFeatureBuilders)
-    extractor.as.cross(extractor.aggregate).flatMap {
-      case ((o, a), c) =>
-        fbs.map { x =>
-          fs.map(_.multiFeatureValues(a, c, x))
-          (x.map(_.result).toSeq, x.map(_.rejections), o)
-        }
-    }
+    extractor.as
+      .cross(extractor.aggregate)
+      .cross(fs)
+      .map {
+        case (((o, a), c), featureSet) =>
+          val fb = featureSet.multiFeatureBuilders
+          featureSet.multiFeatureValues(a, c, fb)
+          (fb.map(_.result).toSeq, fb.map(_.rejections), o)
+      }
   }
 
 }
