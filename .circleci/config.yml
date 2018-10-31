@@ -1,0 +1,46 @@
+version: 2
+
+scala_211: &scala_211
+  environment:
+    - SCALA_VERSION: 2.11.12
+
+scala_212: &scala_212
+  environment:
+    - SCALA_VERSION: 2.12.7
+
+jdk8: &jdk8
+  docker:
+    - image: openjdk:8
+
+settings: &settings
+  working_directory: ~/featran
+  resource_class: large
+  steps:
+  - checkout
+  - restore_cache:
+      key: sbt-cache
+  - save_cache:
+      key: sbt-cache
+      paths:
+      - "~/.ivy2/cache"
+      - "~/.sbt"
+      - "~/.m2"
+
+jobs:
+  build_211:
+    <<: [*settings, *scala_211, *jdk8]
+    - run:
+        name: featran 2.11 jdk8
+        command: sbt coverage "++$SCALA_VERSION test" coverageReport coverageAggregate
+  build_212:
+    <<: [*settings, *scala_212, *jdk8]
+    - run:
+        name: featran 2.12 jdk8
+        command: sbt "++$SCALA_VERSION test"
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - build_211
+      - build_212
